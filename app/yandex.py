@@ -11,13 +11,21 @@ class ExternalFileSnapshot:
     revision: str
 
 
+@dataclass(frozen=True, slots=True)
+class OAuthToken:
+    access_token: str
+    refresh_token: str | None
+    expires_in: int
+
+
 class YandexOAuthClient:
     authorize_base_url = "https://oauth.yandex.com/authorize"
 
-    def __init__(self, *, client_id: str, client_secret: str, redirect_uri: str):
+    def __init__(self, *, client_id: str, client_secret: str, redirect_uri: str, transport: httpx.BaseTransport | None = None):
         self.client_id = client_id
         self.client_secret = client_secret
         self.redirect_uri = redirect_uri
+        self.transport = transport
 
     def build_authorize_url(self, *, state: str) -> str:
         params = urlencode({
@@ -27,6 +35,25 @@ class YandexOAuthClient:
             "state": state,
         })
         return f"{self.authorize_base_url}?{params}"
+
+    def exchange_code(self, code: str) -> OAuthToken:
+        with httpx.Client(base_url="https://oauth.yandex.com", transport=self.transport) as client:
+            response = client.post(
+                "/token",
+                data={
+                    "grant_type": "authorization_code",
+                    "code": code,
+                    "client_id": self.client_id,
+                    "client_secret": self.client_secret,
+                },
+            )
+            response.raise_for_status()
+        payload = response.json()
+        return OAuthToken(
+            access_token=payload["access_token"],
+            refresh_token=payload.get("refresh_token"),
+            expires_in=payload["expires_in"],
+        )
 
 
 class YandexDiskClient:
