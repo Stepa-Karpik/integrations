@@ -8,3 +8,5 @@ integrations.egg-info/dependency_links.txt
 integrations.egg-info/requires.txt
 integrations.egg-info/top_level.txt
 tests/test_health.py
+tests/test_integrations.py
+tests/test_yandex.py
