@@ -20,6 +20,13 @@ class IntegrationRepository:
     def list_connections(self, owner_subject_id: str) -> list[ConnectionModel]:
         return list(self.session.scalars(select(ConnectionModel).where(ConnectionModel.owner_subject_id == owner_subject_id)).all())
 
+    def latest_connection(self, *, owner_subject_id: str, provider: str) -> ConnectionModel | None:
+        stmt = select(ConnectionModel).where(
+            ConnectionModel.owner_subject_id == owner_subject_id,
+            ConnectionModel.provider == provider,
+        ).order_by(ConnectionModel.created_at.desc())
+        return self.session.scalar(stmt)
+
     def get_connection(self, connection_id: str) -> ConnectionModel | None:
         return self.session.get(ConnectionModel, connection_id)
 

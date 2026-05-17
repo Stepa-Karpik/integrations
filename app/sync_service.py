@@ -21,6 +21,7 @@ class YandexWatchedFolderSyncService:
                 'external_file_id': snapshot.external_file_id,
                 'filename': snapshot.filename,
                 'revision': snapshot.revision,
+                'external_path': snapshot.external_path,
             }
             for snapshot in snapshots
         ]

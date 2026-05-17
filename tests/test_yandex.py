@@ -15,7 +15,7 @@ def test_lists_folder_files_from_yandex_disk_response():
     def handler(request: httpx.Request) -> httpx.Response:
         assert request.url.path == '/v1/disk/resources'
         return httpx.Response(200, json={'_embedded': {'items': [
-            {'resource_id': 'disk_1', 'name': 'invoice.docx', 'revision': 7, 'type': 'file'},
+            {'resource_id': 'disk_1', 'name': 'invoice.docx', 'revision': 7, 'path': 'disk:/Docs/invoice.docx', 'type': 'file'},
             {'resource_id': 'folder_1', 'name': 'subfolder', 'type': 'dir'},
         ]}})
     client = YandexDiskClient(access_token='token', transport=httpx.MockTransport(handler))
@@ -23,6 +23,17 @@ def test_lists_folder_files_from_yandex_disk_response():
     assert len(files) == 1
     assert files[0].external_file_id == 'disk_1'
     assert files[0].revision == '7'
+    assert files[0].external_path == 'disk:/Docs/invoice.docx'
+
+
+def test_downloads_file_bytes_from_yandex_disk():
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == '/v1/disk/resources/download':
+            return httpx.Response(200, json={'href': 'https://download.example/file'})
+        assert str(request.url) == 'https://download.example/file'
+        return httpx.Response(200, content=b'file-bytes')
+    client = YandexDiskClient(access_token='token', transport=httpx.MockTransport(handler))
+    assert client.download_file('disk:/Docs/invoice.docx') == b'file-bytes'
 
 
 def test_exchanges_code_for_token():

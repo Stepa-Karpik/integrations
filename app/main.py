@@ -1,6 +1,6 @@
 import os
 from typing import Annotated
-from fastapi import Depends, FastAPI, status
+from fastapi import Depends, FastAPI, HTTPException, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
@@ -72,6 +72,17 @@ def create_yandex_connection(payload: YandexConnectionCreate, session: SessionDe
 @app.get('/api/v1/connections')
 def list_connections(owner_subject_id: str, session: SessionDep):
     return [_connection_to_dict(connection) for connection in IntegrationRepository(session).list_connections(owner_subject_id)]
+
+
+@app.get('/api/v1/external-files/content')
+def download_external_file(owner_subject_id: str, provider: str, external_path: str, session: SessionDep):
+    connection = IntegrationRepository(session).latest_connection(owner_subject_id=owner_subject_id, provider=provider)
+    if connection is None:
+        raise HTTPException(status_code=404, detail='connection not found')
+    if provider != 'yandex_disk':
+        raise HTTPException(status_code=400, detail='unsupported provider')
+    content = YandexDiskClient(access_token=connection.access_token).download_file(external_path)
+    return Response(content=content, media_type='application/octet-stream')
 
 
 @app.get('/api/v1/oauth/yandex-disk/authorize')

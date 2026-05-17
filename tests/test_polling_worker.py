@@ -15,7 +15,7 @@ class FakeYandexClient:
 
     def list_folder(self, path: str):
         assert path == "/Docs"
-        return [ExternalFileSnapshot(external_file_id="disk_1", filename="invoice.pdf", revision="rev_1")]
+        return [ExternalFileSnapshot(external_file_id="disk_1", filename="invoice.pdf", revision="rev_1", external_path="disk:/Docs/invoice.pdf")]
 
 
 class FakeDocumentsClient:
@@ -51,7 +51,7 @@ def test_polling_worker_syncs_linked_yandex_sources_and_completes_jobs():
     assert documents_client.calls == [
         (
             "doc_wsrc_1",
-            [{"external_file_id": "disk_1", "filename": "invoice.pdf", "revision": "rev_1"}],
+            [{"external_file_id": "disk_1", "filename": "invoice.pdf", "revision": "rev_1", "external_path": "disk:/Docs/invoice.pdf"}],
         )
     ]
     jobs = repo.list_sync_jobs(source.id)

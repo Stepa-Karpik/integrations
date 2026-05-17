@@ -5,7 +5,7 @@ from app.yandex import ExternalFileSnapshot
 class FakeYandex:
     def list_folder(self, path):
         assert path == '/Docs'
-        return [ExternalFileSnapshot('disk_1', 'invoice.docx', 'rev_1')]
+        return [ExternalFileSnapshot('disk_1', 'invoice.docx', 'rev_1', 'disk:/Docs/invoice.docx')]
 
 class FakeDocuments:
     def __init__(self): self.calls=[]
@@ -20,3 +20,4 @@ def test_sync_service_forwards_yandex_snapshot_to_documents():
     assert result[0]['action'] == 'created'
     assert docs.calls[0][0] == 'source_1'
     assert docs.calls[0][1][0]['external_file_id'] == 'disk_1'
+    assert docs.calls[0][1][0]['external_path'] == 'disk:/Docs/invoice.docx'

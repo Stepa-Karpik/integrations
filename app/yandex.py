@@ -14,6 +14,7 @@ class ExternalFileSnapshot:
     external_file_id: str
     filename: str
     revision: str
+    external_path: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -100,7 +101,21 @@ class YandexDiskClient:
                 external_file_id=item["resource_id"],
                 filename=item["name"],
                 revision=str(item.get("revision", "")),
+                external_path=item["path"],
             )
             for item in items
             if item.get("type") == "file"
         ]
+
+    def download_file(self, path: str) -> bytes:
+        with httpx.Client(base_url="https://cloud-api.yandex.net", transport=self.transport) as client:
+            response = client.get(
+                "/v1/disk/resources/download",
+                params={"path": path},
+                headers={"Authorization": f"OAuth {self.access_token}"},
+            )
+            response.raise_for_status()
+            href = response.json()["href"]
+            download = client.get(href)
+            download.raise_for_status()
+            return download.content
