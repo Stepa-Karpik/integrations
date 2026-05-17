@@ -1,4 +1,9 @@
 from dataclasses import dataclass
+import base64
+import hashlib
+import hmac
+import json
+from secrets import token_urlsafe
 from urllib.parse import urlencode
 
 import httpx
@@ -16,6 +21,26 @@ class OAuthToken:
     access_token: str
     refresh_token: str | None
     expires_in: int
+
+
+def encode_oauth_state(*, owner_subject_id: str, secret: str) -> str:
+    payload = json.dumps({"sub": owner_subject_id, "nonce": token_urlsafe(12)}, separators=(",", ":")).encode()
+    encoded = base64.urlsafe_b64encode(payload).rstrip(b"=")
+    signature = hmac.new(secret.encode(), encoded, hashlib.sha256).digest()
+    encoded_signature = base64.urlsafe_b64encode(signature).rstrip(b"=")
+    return f"{encoded.decode()}.{encoded_signature.decode()}"
+
+
+def decode_oauth_state(state: str, *, secret: str) -> str:
+    try:
+        encoded, encoded_signature = state.split(".", 1)
+        expected = base64.urlsafe_b64encode(hmac.new(secret.encode(), encoded.encode(), hashlib.sha256).digest()).rstrip(b"=").decode()
+        if not hmac.compare_digest(encoded_signature, expected):
+            raise ValueError("invalid state signature")
+        payload = json.loads(base64.urlsafe_b64decode(encoded + "=" * (-len(encoded) % 4)))
+        return payload["sub"]
+    except (ValueError, KeyError, json.JSONDecodeError) as exc:
+        raise ValueError("invalid oauth state") from exc
 
 
 class YandexOAuthClient:

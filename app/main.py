@@ -2,12 +2,14 @@ import os
 from typing import Annotated
 from fastapi import Depends, FastAPI, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.db import get_session
 from app.documents_client import HttpDocumentsClient
 from app.repositories import IntegrationRepository
+from app.yandex import YandexOAuthClient, decode_oauth_state, encode_oauth_state
 
 app = FastAPI(title='integrations')
 app.add_middleware(
@@ -33,6 +35,14 @@ class YandexConnectionCreate(BaseModel):
 
 def _build_documents_client() -> HttpDocumentsClient:
     return HttpDocumentsClient(base_url=os.getenv("DOCUMENTS_BASE_URL", "http://documents:8200"))
+
+
+def _build_yandex_oauth_client() -> YandexOAuthClient:
+    return YandexOAuthClient(
+        client_id=os.getenv("YANDEX_DISK_CLIENT_ID", ""),
+        client_secret=os.getenv("YANDEX_DISK_CLIENT_SECRET", ""),
+        redirect_uri=os.getenv("YANDEX_DISK_REDIRECT_URI", ""),
+    )
 
 @app.get('/healthz')
 def healthz(): return {'status': 'ok', 'service': 'integrations'}
@@ -62,6 +72,32 @@ def create_yandex_connection(payload: YandexConnectionCreate, session: SessionDe
 @app.get('/api/v1/connections')
 def list_connections(owner_subject_id: str, session: SessionDep):
     return [_connection_to_dict(connection) for connection in IntegrationRepository(session).list_connections(owner_subject_id)]
+
+
+@app.get('/api/v1/oauth/yandex-disk/authorize')
+def authorize_yandex_disk(owner_subject_id: str):
+    state = encode_oauth_state(
+        owner_subject_id=owner_subject_id,
+        secret=os.getenv("YANDEX_DISK_STATE_SECRET", os.getenv("YANDEX_DISK_CLIENT_SECRET", "dev-state-secret")),
+    )
+    return {"authorization_url": _build_yandex_oauth_client().build_authorize_url(state=state)}
+
+
+@app.get('/api/v1/oauth/yandex-disk/callback')
+def yandex_disk_callback(code: str, state: str, session: SessionDep):
+    owner_subject_id = decode_oauth_state(
+        state,
+        secret=os.getenv("YANDEX_DISK_STATE_SECRET", os.getenv("YANDEX_DISK_CLIENT_SECRET", "dev-state-secret")),
+    )
+    token = _build_yandex_oauth_client().exchange_code(code)
+    IntegrationRepository(session).create_yandex_connection(
+        owner_subject_id=owner_subject_id,
+        access_token=token.access_token,
+        refresh_token=token.refresh_token,
+    )
+    return RedirectResponse(
+        url=f"{os.getenv('DOCUMENTS_PUBLIC_BASE_URL', 'http://localhost:3200').rstrip('/')}/?integration=yandex-disk-connected"
+    )
 
 
 def _connection_to_dict(connection):

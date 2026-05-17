@@ -1,6 +1,6 @@
 import httpx
 
-from app.yandex import YandexDiskClient, YandexOAuthClient
+from app.yandex import YandexDiskClient, YandexOAuthClient, decode_oauth_state, encode_oauth_state
 
 
 def test_builds_authorize_url_with_redirect_and_state():
@@ -33,3 +33,8 @@ def test_exchanges_code_for_token():
     token = client.exchange_code('code_1')
     assert token.access_token == 'ya-token'
     assert token.refresh_token == 'ya-refresh'
+
+
+def test_oauth_state_round_trip_is_signed():
+    state = encode_oauth_state(owner_subject_id="usr_1", secret="secret")
+    assert decode_oauth_state(state, secret="secret") == "usr_1"
