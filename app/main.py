@@ -1,5 +1,7 @@
+import os
 from typing import Annotated
 from fastapi import Depends, FastAPI, status
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -7,6 +9,13 @@ from app.db import get_session
 from app.repositories import IntegrationRepository
 
 app = FastAPI(title='integrations')
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[origin for origin in os.getenv('FRONTEND_ORIGINS', 'http://localhost:3200').split(',') if origin],
+    allow_credentials=True,
+    allow_methods=['*'],
+    allow_headers=['*'],
+)
 SessionDep = Annotated[Session, Depends(get_session)]
 
 class WatchedSourceCreate(BaseModel):
