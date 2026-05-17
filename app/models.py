@@ -26,6 +26,7 @@ class WatchedSourceModel(Base):
     provider: Mapped[str] = mapped_column(String(64))
     root_path: Mapped[str] = mapped_column(String(1024))
     connection_id: Mapped[str | None] = mapped_column(ForeignKey('connections.id'), nullable=True)
+    downstream_source_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
 
 

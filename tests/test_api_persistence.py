@@ -19,10 +19,15 @@ def make_client():
     return TestClient(app)
 
 
-def test_connection_and_source_survive_separate_requests():
+def test_connection_and_source_survive_separate_requests(monkeypatch):
+    class FakeDocumentsClient:
+        def create_watched_source(self, **payload):
+            return {"id": "doc_wsrc_1"}
+    monkeypatch.setattr("app.main._build_documents_client", lambda: FakeDocumentsClient())
     client = make_client()
     connection = client.post('/api/v1/connections/yandex-disk', json={'owner_subject_id': 'usr_1', 'access_token': 'token', 'refresh_token': 'refresh'}).json()
     source = client.post('/api/v1/watched-sources', json={'owner_subject_id': 'usr_1', 'provider': 'yandex_disk', 'root_path': '/Docs', 'connection_id': connection['id']})
     assert source.status_code == 201
     listed = client.get('/api/v1/watched-sources', params={'owner_subject_id': 'usr_1'})
     assert listed.json()[0]['connection_id'] == connection['id']
+    assert listed.json()[0]['downstream_source_id'] == 'doc_wsrc_1'

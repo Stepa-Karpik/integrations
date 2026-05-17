@@ -20,8 +20,25 @@ class IntegrationRepository:
     def list_connections(self, owner_subject_id: str) -> list[ConnectionModel]:
         return list(self.session.scalars(select(ConnectionModel).where(ConnectionModel.owner_subject_id == owner_subject_id)).all())
 
-    def create_watched_source(self, *, owner_subject_id: str, provider: str, root_path: str, connection_id: str | None = None) -> WatchedSourceModel:
-        source = WatchedSourceModel(owner_subject_id=owner_subject_id, provider=provider, root_path=root_path, connection_id=connection_id)
+    def get_connection(self, connection_id: str) -> ConnectionModel | None:
+        return self.session.get(ConnectionModel, connection_id)
+
+    def create_watched_source(
+        self,
+        *,
+        owner_subject_id: str,
+        provider: str,
+        root_path: str,
+        connection_id: str | None = None,
+        downstream_source_id: str | None = None,
+    ) -> WatchedSourceModel:
+        source = WatchedSourceModel(
+            owner_subject_id=owner_subject_id,
+            provider=provider,
+            root_path=root_path,
+            connection_id=connection_id,
+            downstream_source_id=downstream_source_id,
+        )
         self.session.add(source)
         self.session.commit()
         self.session.refresh(source)
@@ -29,6 +46,9 @@ class IntegrationRepository:
 
     def list_watched_sources(self, owner_subject_id: str) -> list[WatchedSourceModel]:
         return list(self.session.scalars(select(WatchedSourceModel).where(WatchedSourceModel.owner_subject_id == owner_subject_id)).all())
+
+    def list_all_watched_sources(self) -> list[WatchedSourceModel]:
+        return list(self.session.scalars(select(WatchedSourceModel)).all())
 
 
 class IntegrationRepository(IntegrationRepository):
@@ -47,3 +67,6 @@ class IntegrationRepository(IntegrationRepository):
         self.session.commit()
         self.session.refresh(job)
         return job
+
+    def list_sync_jobs(self, source_id: str) -> list[SyncJobModel]:
+        return list(self.session.scalars(select(SyncJobModel).where(SyncJobModel.source_id == source_id)).all())
