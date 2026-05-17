@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from app.db import get_session
 from app.documents_client import HttpDocumentsClient
 from app.repositories import IntegrationRepository
-from app.yandex import YandexOAuthClient, decode_oauth_state, encode_oauth_state
+from app.yandex import YandexDiskClient, YandexOAuthClient, decode_oauth_state, encode_oauth_state
 
 app = FastAPI(title='integrations')
 app.add_middleware(
@@ -32,15 +32,20 @@ class YandexConnectionCreate(BaseModel):
     access_token: str
     refresh_token: str | None = None
 
+class YandexCredentialUpsert(BaseModel):
+    owner_subject_id: str
+    client_id: str
+    client_secret: str
+
 
 def _build_documents_client() -> HttpDocumentsClient:
     return HttpDocumentsClient(base_url=os.getenv("DOCUMENTS_BASE_URL", "http://documents:8200"))
 
 
-def _build_yandex_oauth_client() -> YandexOAuthClient:
+def _build_yandex_oauth_client(*, client_id: str | None = None, client_secret: str | None = None) -> YandexOAuthClient:
     return YandexOAuthClient(
-        client_id=os.getenv("YANDEX_DISK_CLIENT_ID", ""),
-        client_secret=os.getenv("YANDEX_DISK_CLIENT_SECRET", ""),
+        client_id=client_id if client_id is not None else os.getenv("YANDEX_DISK_CLIENT_ID", ""),
+        client_secret=client_secret if client_secret is not None else os.getenv("YANDEX_DISK_CLIENT_SECRET", ""),
         redirect_uri=os.getenv("YANDEX_DISK_REDIRECT_URI", ""),
     )
 
@@ -73,6 +78,33 @@ def create_yandex_connection(payload: YandexConnectionCreate, session: SessionDe
 def list_connections(owner_subject_id: str, session: SessionDep):
     return [_connection_to_dict(connection) for connection in IntegrationRepository(session).list_connections(owner_subject_id)]
 
+@app.put('/api/v1/providers/yandex-disk/credentials')
+def upsert_yandex_credentials(payload: YandexCredentialUpsert, session: SessionDep):
+    IntegrationRepository(session).upsert_provider_credentials(
+        owner_subject_id=payload.owner_subject_id,
+        provider='yandex_disk',
+        client_id=payload.client_id,
+        client_secret=payload.client_secret,
+    )
+    return {'provider': 'yandex_disk', 'configured': True, 'client_id_hint': f'{payload.client_id[:4]}…'}
+
+@app.get('/api/v1/providers/yandex-disk/status')
+def yandex_disk_status(owner_subject_id: str, session: SessionDep):
+    repo = IntegrationRepository(session)
+    credentials = repo.get_provider_credentials(owner_subject_id=owner_subject_id, provider='yandex_disk')
+    connection = repo.latest_connection(owner_subject_id=owner_subject_id, provider='yandex_disk')
+    sources = repo.list_watched_sources(owner_subject_id)
+    jobs = [job for source in sources for job in repo.list_sync_jobs(source.id)]
+    last_job = max(jobs, key=lambda item: item.created_at, default=None)
+    return {
+        'provider': 'yandex_disk',
+        'credentials_configured': credentials is not None,
+        'connected': connection is not None,
+        'watched_sources': [_source_to_dict(source) for source in sources if source.provider == 'yandex_disk'],
+        'last_sync_status': last_job.status if last_job else None,
+        'last_sync_at': last_job.completed_at.isoformat() if last_job and last_job.completed_at else None,
+    }
+
 
 @app.get('/api/v1/external-files/content')
 def download_external_file(owner_subject_id: str, provider: str, external_path: str, session: SessionDep):
@@ -86,12 +118,17 @@ def download_external_file(owner_subject_id: str, provider: str, external_path: 
 
 
 @app.get('/api/v1/oauth/yandex-disk/authorize')
-def authorize_yandex_disk(owner_subject_id: str):
+def authorize_yandex_disk(owner_subject_id: str, session: SessionDep):
+    credentials = IntegrationRepository(session).decrypt_provider_credentials(owner_subject_id=owner_subject_id, provider='yandex_disk')
+    if credentials is None and os.getenv("YANDEX_DISK_CLIENT_ID") and os.getenv("YANDEX_DISK_CLIENT_SECRET"):
+        credentials = (os.environ["YANDEX_DISK_CLIENT_ID"], os.environ["YANDEX_DISK_CLIENT_SECRET"])
+    if credentials is None:
+        raise HTTPException(status_code=409, detail='yandex credentials not configured')
     state = encode_oauth_state(
         owner_subject_id=owner_subject_id,
         secret=os.getenv("YANDEX_DISK_STATE_SECRET", os.getenv("YANDEX_DISK_CLIENT_SECRET", "dev-state-secret")),
     )
-    return {"authorization_url": _build_yandex_oauth_client().build_authorize_url(state=state)}
+    return {"authorization_url": _build_yandex_oauth_client(client_id=credentials[0], client_secret=credentials[1]).build_authorize_url(state=state)}
 
 
 @app.get('/api/v1/oauth/yandex-disk/callback')
@@ -100,7 +137,11 @@ def yandex_disk_callback(code: str, state: str, session: SessionDep):
         state,
         secret=os.getenv("YANDEX_DISK_STATE_SECRET", os.getenv("YANDEX_DISK_CLIENT_SECRET", "dev-state-secret")),
     )
-    token = _build_yandex_oauth_client().exchange_code(code)
+    credentials = IntegrationRepository(session).decrypt_provider_credentials(owner_subject_id=owner_subject_id, provider='yandex_disk')
+    if credentials is None and os.getenv("YANDEX_DISK_CLIENT_ID") and os.getenv("YANDEX_DISK_CLIENT_SECRET"):
+        credentials = (os.environ["YANDEX_DISK_CLIENT_ID"], os.environ["YANDEX_DISK_CLIENT_SECRET"])
+    oauth_client = _build_yandex_oauth_client(client_id=credentials[0], client_secret=credentials[1]) if credentials is not None else _build_yandex_oauth_client()
+    token = oauth_client.exchange_code(code)
     IntegrationRepository(session).create_yandex_connection(
         owner_subject_id=owner_subject_id,
         access_token=token.access_token,

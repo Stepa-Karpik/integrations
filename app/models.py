@@ -19,6 +19,17 @@ class ConnectionModel(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
 
 
+class ProviderCredentialModel(Base):
+    __tablename__ = 'provider_credentials'
+    id: Mapped[str] = mapped_column(String(64), primary_key=True, default=lambda: f'pcred_{uuid4().hex}')
+    owner_subject_id: Mapped[str] = mapped_column(String(128), index=True)
+    provider: Mapped[str] = mapped_column(String(64))
+    client_id_encrypted: Mapped[str] = mapped_column(String(4096))
+    client_secret_encrypted: Mapped[str] = mapped_column(String(4096))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
+
+
 class WatchedSourceModel(Base):
     __tablename__ = 'watched_sources'
     id: Mapped[str] = mapped_column(String(64), primary_key=True, default=lambda: f'wsrc_{uuid4().hex}')

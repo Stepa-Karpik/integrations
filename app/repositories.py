@@ -3,7 +3,8 @@ from sqlalchemy.orm import Session
 
 from datetime import UTC, datetime
 
-from app.models import ConnectionModel, SyncJobModel, WatchedSourceModel
+from app.crypto import decrypt, encrypt
+from app.models import ConnectionModel, ProviderCredentialModel, SyncJobModel, WatchedSourceModel
 
 
 class IntegrationRepository:
@@ -29,6 +30,36 @@ class IntegrationRepository:
 
     def get_connection(self, connection_id: str) -> ConnectionModel | None:
         return self.session.get(ConnectionModel, connection_id)
+
+    def upsert_provider_credentials(self, *, owner_subject_id: str, provider: str, client_id: str, client_secret: str) -> ProviderCredentialModel:
+        credentials = self.get_provider_credentials(owner_subject_id=owner_subject_id, provider=provider)
+        if credentials is None:
+            credentials = ProviderCredentialModel(
+                owner_subject_id=owner_subject_id,
+                provider=provider,
+                client_id_encrypted=encrypt(client_id),
+                client_secret_encrypted=encrypt(client_secret),
+            )
+            self.session.add(credentials)
+        else:
+            credentials.client_id_encrypted = encrypt(client_id)
+            credentials.client_secret_encrypted = encrypt(client_secret)
+            credentials.updated_at = datetime.now(UTC)
+        self.session.commit()
+        self.session.refresh(credentials)
+        return credentials
+
+    def get_provider_credentials(self, *, owner_subject_id: str, provider: str) -> ProviderCredentialModel | None:
+        return self.session.scalar(select(ProviderCredentialModel).where(
+            ProviderCredentialModel.owner_subject_id == owner_subject_id,
+            ProviderCredentialModel.provider == provider,
+        ).order_by(ProviderCredentialModel.updated_at.desc()))
+
+    def decrypt_provider_credentials(self, *, owner_subject_id: str, provider: str) -> tuple[str, str] | None:
+        credentials = self.get_provider_credentials(owner_subject_id=owner_subject_id, provider=provider)
+        if credentials is None:
+            return None
+        return decrypt(credentials.client_id_encrypted), decrypt(credentials.client_secret_encrypted)
 
     def create_watched_source(
         self,
