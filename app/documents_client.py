@@ -7,13 +7,13 @@ class HttpDocumentsClient:
         self.transport = transport
 
     def sync_watched_source(self, source_id: str, files: list[dict]) -> list[dict]:
-        with httpx.Client(base_url=self.base_url, transport=self.transport) as client:
+        with httpx.Client(base_url=self.base_url, transport=self.transport, timeout=60.0) as client:
             response = client.post(f'/api/v1/watched-sources/{source_id}/sync', json={'files': files})
             response.raise_for_status()
             return response.json()
 
     def create_watched_source(self, *, owner_subject_id: str, provider: str, root_path: str) -> dict:
-        with httpx.Client(base_url=self.base_url, transport=self.transport) as client:
+        with httpx.Client(base_url=self.base_url, transport=self.transport, timeout=60.0) as client:
             response = client.post(
                 '/api/v1/watched-sources',
                 json={'owner_subject_id': owner_subject_id, 'provider': provider, 'root_path': root_path},

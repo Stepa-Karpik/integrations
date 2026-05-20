@@ -25,8 +25,12 @@ class YandexPollingWorker:
             if connection is None:
                 continue
             job = self.repo.enqueue_sync_job(source_id=source.id)
-            YandexWatchedFolderSyncService(
-                self.yandex_factory(connection.access_token),
-                self.documents_client,
-            ).sync(source_id=source.downstream_source_id, root_path=source.root_path)
+            try:
+                YandexWatchedFolderSyncService(
+                    self.yandex_factory(connection.access_token),
+                    self.documents_client,
+                ).sync(source_id=source.downstream_source_id, root_path=source.root_path)
+            except Exception:
+                self.repo.fail_sync_job(job.id)
+                continue
             self.repo.complete_sync_job(job.id)

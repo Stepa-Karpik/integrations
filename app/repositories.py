@@ -122,6 +122,15 @@ class IntegrationRepository(IntegrationRepository):
         self.session.refresh(job)
         return job
 
+    def fail_sync_job(self, job_id: str) -> SyncJobModel:
+        job = self.session.get(SyncJobModel, job_id)
+        assert job is not None
+        job.status = 'failed'
+        job.completed_at = datetime.now(UTC)
+        self.session.commit()
+        self.session.refresh(job)
+        return job
+
     def complete_sync_job(self, job_id: str) -> SyncJobModel:
         job = self.session.get(SyncJobModel, job_id)
         assert job is not None
