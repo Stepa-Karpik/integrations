@@ -4,6 +4,10 @@ on:
   push:
     branches: [main]
 
+concurrency:
+  group: integrations-deploy
+  cancel-in-progress: false
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -39,6 +43,8 @@ jobs:
             cd /opt/integrations
             git pull origin main
             docker network inspect ecosystem >/dev/null 2>&1 || docker network create ecosystem
-            docker compose up -d --build
+            docker compose rm -fsv migrator || true
+            docker compose up -d --build --remove-orphans
+            docker compose rm -fsv migrator || true
             docker image prune -f
           "
