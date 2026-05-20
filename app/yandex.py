@@ -94,7 +94,7 @@ class YandexDiskClient:
 
     def ensure_folder(self, path: str) -> None:
         normalized_path = path.strip() or "/Docs"
-        with httpx.Client(base_url="https://cloud-api.yandex.net", transport=self.transport) as client:
+        with httpx.Client(base_url="https://cloud-api.yandex.net", transport=self.transport, follow_redirects=True) as client:
             response = client.put(
                 "/v1/disk/resources",
                 params={"path": normalized_path},
@@ -104,7 +104,7 @@ class YandexDiskClient:
                 response.raise_for_status()
 
     def list_folder(self, path: str) -> list[ExternalFileSnapshot]:
-        with httpx.Client(base_url="https://cloud-api.yandex.net", transport=self.transport) as client:
+        with httpx.Client(base_url="https://cloud-api.yandex.net", transport=self.transport, follow_redirects=True) as client:
             response = client.get(
                 "/v1/disk/resources",
                 params={"path": path, "limit": 1000},
@@ -123,8 +123,36 @@ class YandexDiskClient:
             if item.get("type") == "file"
         ]
 
+    def upload_file(self, *, folder_path: str, filename: str, content: bytes) -> ExternalFileSnapshot:
+        normalized_folder = folder_path.strip() or "/Docs"
+        self.ensure_folder(normalized_folder)
+        target_path = f"{normalized_folder.rstrip('/')}/{filename}"
+        with httpx.Client(base_url="https://cloud-api.yandex.net", transport=self.transport, follow_redirects=True) as client:
+            response = client.get(
+                "/v1/disk/resources/upload",
+                params={"path": target_path, "overwrite": "true"},
+                headers={"Authorization": f"OAuth {self.access_token}"},
+            )
+            response.raise_for_status()
+            upload_url = response.json()["href"]
+            uploaded = client.put(upload_url, content=content)
+            uploaded.raise_for_status()
+            metadata = client.get(
+                "/v1/disk/resources",
+                params={"path": target_path},
+                headers={"Authorization": f"OAuth {self.access_token}"},
+            )
+            metadata.raise_for_status()
+        item = metadata.json()
+        return ExternalFileSnapshot(
+            external_file_id=item["resource_id"],
+            filename=item["name"],
+            revision=str(item.get("revision", "")),
+            external_path=item["path"],
+        )
+
     def download_file(self, path: str) -> bytes:
-        with httpx.Client(base_url="https://cloud-api.yandex.net", transport=self.transport) as client:
+        with httpx.Client(base_url="https://cloud-api.yandex.net", transport=self.transport, follow_redirects=True) as client:
             response = client.get(
                 "/v1/disk/resources/download",
                 params={"path": path},

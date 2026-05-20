@@ -104,6 +104,9 @@ class IntegrationRepository:
         self.session.refresh(source)
         return source
 
+    def get_watched_source(self, source_id: str) -> WatchedSourceModel | None:
+        return self.session.get(WatchedSourceModel, source_id)
+
     def list_watched_sources(self, owner_subject_id: str) -> list[WatchedSourceModel]:
         return list(self.session.scalars(select(WatchedSourceModel).where(WatchedSourceModel.owner_subject_id == owner_subject_id)).all())
 

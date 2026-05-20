@@ -1,6 +1,6 @@
 import os
 from typing import Annotated
-from fastapi import Depends, FastAPI, HTTPException, Response, status
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Response, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
@@ -10,6 +10,7 @@ from app.db import get_session
 from app.documents_client import HttpDocumentsClient
 from app.repositories import IntegrationRepository
 from app.yandex import YandexDiskClient, YandexOAuthClient, decode_oauth_state, encode_oauth_state
+from app.sync_service import YandexWatchedFolderSyncService
 
 app = FastAPI(title='integrations')
 app.add_middleware(
@@ -102,18 +103,68 @@ def upsert_yandex_credentials(payload: YandexCredentialUpsert, session: SessionD
 def yandex_disk_status(owner_subject_id: str, session: SessionDep):
     repo = IntegrationRepository(session)
     credentials = repo.get_provider_credentials(owner_subject_id=owner_subject_id, provider='yandex_disk')
+    env_credentials_configured = bool(os.getenv("YANDEX_DISK_CLIENT_ID") and os.getenv("YANDEX_DISK_CLIENT_SECRET"))
     connection = repo.latest_connection(owner_subject_id=owner_subject_id, provider='yandex_disk')
     sources = repo.list_watched_sources(owner_subject_id)
     jobs = [job for source in sources for job in repo.list_sync_jobs(source.id)]
     last_job = max(jobs, key=lambda item: item.created_at, default=None)
     return {
         'provider': 'yandex_disk',
-        'credentials_configured': credentials is not None,
+        'credentials_configured': credentials is not None or env_credentials_configured,
         'connected': connection is not None,
         'watched_sources': [_source_to_dict(source) for source in sources if source.provider == 'yandex_disk'],
         'last_sync_status': last_job.status if last_job else None,
         'last_sync_at': last_job.completed_at.isoformat() if last_job and last_job.completed_at else None,
     }
+
+
+@app.post('/api/v1/external-files/upload', status_code=status.HTTP_201_CREATED)
+async def upload_external_file(
+    session: SessionDep,
+    owner_subject_id: str = Form(...),
+    provider: str = Form(...),
+    root_path: str = Form('/Docs'),
+    file: UploadFile = File(...),
+):
+    if provider != 'yandex_disk':
+        raise HTTPException(status_code=400, detail='unsupported provider')
+    connection = IntegrationRepository(session).latest_connection(owner_subject_id=owner_subject_id, provider=provider)
+    if connection is None:
+        raise HTTPException(status_code=409, detail='yandex disk is not connected')
+    filename = file.filename or 'upload'
+    snapshot = YandexDiskClient(access_token=connection.access_token).upload_file(
+        folder_path=root_path,
+        filename=filename,
+        content=await file.read(),
+    )
+    return {
+        'provider': provider,
+        'external_file_id': snapshot.external_file_id,
+        'external_path': snapshot.external_path,
+        'filename': snapshot.filename,
+        'revision': snapshot.revision,
+        'content_type': file.content_type or 'application/octet-stream',
+    }
+
+
+@app.post('/api/v1/watched-sources/{source_id}/sync-now')
+def sync_watched_source_now(source_id: str, session: SessionDep):
+    repo = IntegrationRepository(session)
+    source = repo.get_watched_source(source_id)
+    if source is None:
+        raise HTTPException(status_code=404, detail='watched source not found')
+    if source.provider != 'yandex_disk' or not source.connection_id or not source.downstream_source_id:
+        raise HTTPException(status_code=409, detail='watched source is not connected')
+    connection = repo.get_connection(source.connection_id)
+    if connection is None:
+        raise HTTPException(status_code=404, detail='connection not found')
+    job = repo.enqueue_sync_job(source_id=source.id)
+    result = YandexWatchedFolderSyncService(
+        YandexDiskClient(access_token=connection.access_token),
+        _build_documents_client(),
+    ).sync(source_id=source.downstream_source_id, root_path=source.root_path)
+    repo.complete_sync_job(job.id)
+    return {'status': 'completed', 'items': result}
 
 
 @app.get('/api/v1/external-files/content')

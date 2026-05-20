@@ -59,3 +59,20 @@ def test_yandex_verification_code_exchange_saves_connection(monkeypatch):
     )
     assert response.status_code == 200
     assert response.json()["provider"] == "yandex_disk"
+
+
+def test_yandex_upload_requires_connection():
+    response = client.post(
+        "/api/v1/external-files/upload",
+        data={"owner_subject_id": "usr_no_disk", "provider": "yandex_disk", "root_path": "/Docs"},
+        files={"file": ("invoice.pdf", b"pdf", "application/pdf")},
+    )
+    assert response.status_code == 409
+
+
+def test_yandex_status_uses_global_credentials(monkeypatch):
+    monkeypatch.setenv("YANDEX_DISK_CLIENT_ID", "global-client")
+    monkeypatch.setenv("YANDEX_DISK_CLIENT_SECRET", "global-secret")
+    response = client.get("/api/v1/providers/yandex-disk/status", params={"owner_subject_id": "usr_global"})
+    assert response.status_code == 200
+    assert response.json()["credentials_configured"] is True
