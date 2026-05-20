@@ -40,3 +40,22 @@ def test_yandex_oauth_callback_saves_connection_and_redirects(monkeypatch):
     )
     assert response.status_code == 307
     assert response.headers["location"] == "https://documents.nerior.ru/?integration=yandex-disk-connected"
+
+
+def test_yandex_verification_code_exchange_saves_connection(monkeypatch):
+    from app.yandex import OAuthToken
+
+    class FakeOAuthClient:
+        def exchange_code(self, code: str):
+            assert code == "manual-code"
+            return OAuthToken(access_token="manual-token", refresh_token="manual-refresh", expires_in=3600)
+
+    monkeypatch.setenv("YANDEX_DISK_CLIENT_ID", "cid")
+    monkeypatch.setenv("YANDEX_DISK_CLIENT_SECRET", "secret")
+    monkeypatch.setattr("app.main._build_yandex_oauth_client", lambda client_id=None, client_secret=None: FakeOAuthClient())
+    response = client.post(
+        "/api/v1/oauth/yandex-disk/verification-code",
+        json={"owner_subject_id": "usr_manual", "code": " manual-code "},
+    )
+    assert response.status_code == 200
+    assert response.json()["provider"] == "yandex_disk"

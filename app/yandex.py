@@ -69,10 +69,13 @@ class YandexOAuthClient:
             response = client.post(
                 "/token",
                 data={
-                    "grant_type": "authorization_code",
-                    "code": code,
-                    "client_id": self.client_id,
-                    "client_secret": self.client_secret,
+                    **{
+                        "grant_type": "authorization_code",
+                        "code": code,
+                        "client_id": self.client_id,
+                        "client_secret": self.client_secret,
+                    },
+                    **({"redirect_uri": self.redirect_uri} if self.redirect_uri else {}),
                 },
             )
             response.raise_for_status()

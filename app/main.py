@@ -37,6 +37,10 @@ class YandexCredentialUpsert(BaseModel):
     client_id: str
     client_secret: str
 
+class YandexVerificationCodeExchange(BaseModel):
+    owner_subject_id: str
+    code: str
+
 
 def _build_documents_client() -> HttpDocumentsClient:
     return HttpDocumentsClient(base_url=os.getenv("DOCUMENTS_BASE_URL", "http://documents:8200"))
@@ -135,6 +139,22 @@ def authorize_yandex_disk(owner_subject_id: str, session: SessionDep):
         secret=os.getenv("YANDEX_DISK_STATE_SECRET", os.getenv("YANDEX_DISK_CLIENT_SECRET", "dev-state-secret")),
     )
     return {"authorization_url": _build_yandex_oauth_client(client_id=credentials[0], client_secret=credentials[1]).build_authorize_url(state=state)}
+
+
+@app.post('/api/v1/oauth/yandex-disk/verification-code')
+def exchange_yandex_disk_verification_code(payload: YandexVerificationCodeExchange, session: SessionDep):
+    credentials = IntegrationRepository(session).decrypt_provider_credentials(owner_subject_id=payload.owner_subject_id, provider='yandex_disk')
+    if credentials is None and os.getenv("YANDEX_DISK_CLIENT_ID") and os.getenv("YANDEX_DISK_CLIENT_SECRET"):
+        credentials = (os.environ["YANDEX_DISK_CLIENT_ID"], os.environ["YANDEX_DISK_CLIENT_SECRET"])
+    if credentials is None:
+        raise HTTPException(status_code=409, detail='yandex credentials not configured')
+    token = _build_yandex_oauth_client(client_id=credentials[0], client_secret=credentials[1]).exchange_code(payload.code.strip())
+    connection = IntegrationRepository(session).create_yandex_connection(
+        owner_subject_id=payload.owner_subject_id,
+        access_token=token.access_token,
+        refresh_token=token.refresh_token,
+    )
+    return _connection_to_dict(connection)
 
 
 @app.get('/api/v1/oauth/yandex-disk/callback')
