@@ -54,12 +54,18 @@ def healthz(): return {'status': 'ok', 'service': 'integrations'}
 
 @app.post('/api/v1/watched-sources', status_code=status.HTTP_201_CREATED)
 def create_source(payload: WatchedSourceCreate, session: SessionDep):
+    repo = IntegrationRepository(session)
+    existing = repo.latest_watched_source(owner_subject_id=payload.owner_subject_id, provider=payload.provider)
+    if existing is not None:
+        source = repo.update_watched_source(existing, root_path=payload.root_path, connection_id=payload.connection_id)
+        return _source_to_dict(source)
+
     downstream_source = _build_documents_client().create_watched_source(
         owner_subject_id=payload.owner_subject_id,
         provider=payload.provider,
         root_path=payload.root_path,
     )
-    source = IntegrationRepository(session).create_watched_source(
+    source = repo.create_watched_source(
         **payload.model_dump(),
         downstream_source_id=downstream_source["id"],
     )

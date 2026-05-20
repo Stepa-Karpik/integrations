@@ -82,6 +82,28 @@ class IntegrationRepository:
         self.session.refresh(source)
         return source
 
+
+    def latest_watched_source(self, *, owner_subject_id: str, provider: str) -> WatchedSourceModel | None:
+        stmt = select(WatchedSourceModel).where(
+            WatchedSourceModel.owner_subject_id == owner_subject_id,
+            WatchedSourceModel.provider == provider,
+        ).order_by(WatchedSourceModel.created_at.desc())
+        return self.session.scalar(stmt)
+
+    def update_watched_source(
+        self,
+        source: WatchedSourceModel,
+        *,
+        root_path: str,
+        connection_id: str | None = None,
+    ) -> WatchedSourceModel:
+        source.root_path = root_path
+        if connection_id is not None:
+            source.connection_id = connection_id
+        self.session.commit()
+        self.session.refresh(source)
+        return source
+
     def list_watched_sources(self, owner_subject_id: str) -> list[WatchedSourceModel]:
         return list(self.session.scalars(select(WatchedSourceModel).where(WatchedSourceModel.owner_subject_id == owner_subject_id)).all())
 
