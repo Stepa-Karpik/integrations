@@ -46,7 +46,7 @@ def _build_yandex_oauth_client(*, client_id: str | None = None, client_secret: s
     return YandexOAuthClient(
         client_id=client_id if client_id is not None else os.getenv("YANDEX_DISK_CLIENT_ID", ""),
         client_secret=client_secret if client_secret is not None else os.getenv("YANDEX_DISK_CLIENT_SECRET", ""),
-        redirect_uri=os.getenv("YANDEX_DISK_REDIRECT_URI", ""),
+        redirect_uri=os.getenv("YANDEX_DISK_REDIRECT_URI", "") if os.getenv("YANDEX_DISK_INCLUDE_REDIRECT_URI", "false").lower() in {"1", "true", "yes"} else "",
     )
 
 @app.get('/healthz')

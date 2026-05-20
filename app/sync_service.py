@@ -2,6 +2,7 @@ from typing import Protocol
 
 
 class FolderSnapshotClient(Protocol):
+    def ensure_folder(self, path: str) -> None: ...
     def list_folder(self, path: str): ...
 
 
@@ -15,6 +16,7 @@ class YandexWatchedFolderSyncService:
         self.documents_client = documents_client
 
     def sync(self, *, source_id: str, root_path: str) -> list[dict]:
+        self.yandex_client.ensure_folder(root_path)
         snapshots = self.yandex_client.list_folder(root_path)
         files = [
             {

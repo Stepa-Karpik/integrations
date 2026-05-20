@@ -54,12 +54,14 @@ class YandexOAuthClient:
         self.transport = transport
 
     def build_authorize_url(self, *, state: str) -> str:
-        params = urlencode({
+        payload = {
             "response_type": "code",
             "client_id": self.client_id,
-            "redirect_uri": self.redirect_uri,
             "state": state,
-        })
+        }
+        if self.redirect_uri:
+            payload["redirect_uri"] = self.redirect_uri
+        params = urlencode(payload)
         return f"{self.authorize_base_url}?{params}"
 
     def exchange_code(self, code: str) -> OAuthToken:
@@ -86,6 +88,17 @@ class YandexDiskClient:
     def __init__(self, *, access_token: str, transport: httpx.BaseTransport | None = None):
         self.access_token = access_token
         self.transport = transport
+
+    def ensure_folder(self, path: str) -> None:
+        normalized_path = path.strip() or "/Docs"
+        with httpx.Client(base_url="https://cloud-api.yandex.net", transport=self.transport) as client:
+            response = client.put(
+                "/v1/disk/resources",
+                params={"path": normalized_path},
+                headers={"Authorization": f"OAuth {self.access_token}"},
+            )
+            if response.status_code not in {201, 409}:
+                response.raise_for_status()
 
     def list_folder(self, path: str) -> list[ExternalFileSnapshot]:
         with httpx.Client(base_url="https://cloud-api.yandex.net", transport=self.transport) as client:
